@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-poc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-poc
+  template:
+    metadata:
+      labels:
+        app: nginx-poc
+    spec:
+      containers:
+      - name: nginx-poc
+        image: asia-south1-docker.pkg.dev/kiran-499609/poc-repo/nginx-poc:v1
+        ports:
+        - containerPort: 80
