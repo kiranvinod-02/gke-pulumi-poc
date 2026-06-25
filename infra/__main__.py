@@ -28,7 +28,7 @@ subnet = gcp.compute.Subnetwork("poc-subnet",
     private_ip_google_access=True,
 )
 
-# Cloud Router + Cloud NAT — outbound internet for the bastion (no public IP)
+# Cloud Router + Cloud NAT
 router = gcp.compute.Router("poc-router",
     network=vpc.id,
     region=region,
@@ -41,7 +41,7 @@ nat = gcp.compute.RouterNat("poc-nat",
     source_subnetwork_ip_ranges_to_nat="ALL_SUBNETWORKS_ALL_IP_RANGES",
 )
 
-# Firewall: allow IAP's fixed source range to reach the bastion on port 22
+# Firewall: allow IAP into bastion
 iap_firewall = gcp.compute.Firewall("allow-iap-ssh",
     network=vpc.id,
     direction="INGRESS",
@@ -53,7 +53,7 @@ iap_firewall = gcp.compute.Firewall("allow-iap-ssh",
     target_tags=["bastion"],
 )
 
-# Bastion VM — no external IP, reachable only via IAP
+# Bastion VM — no external IP, IAP only
 bastion = gcp.compute.Instance("poc-bastion",
     machine_type="e2-small",
     zone=zone,
@@ -82,7 +82,7 @@ artifact_repo = gcp.artifactregistry.Repository("poc-repo",
     format="DOCKER",
 )
 
-# GKE cluster (public for now — private config comes once IAM permissions land)
+# GKE cluster — fully private
 cluster = gcp.container.Cluster("poc-cluster",
     location=zone,
     network=vpc.id,
@@ -92,6 +92,19 @@ cluster = gcp.container.Cluster("poc-cluster",
     ip_allocation_policy=gcp.container.ClusterIpAllocationPolicyArgs(
         cluster_secondary_range_name="pods",
         services_secondary_range_name="services",
+    ),
+    private_cluster_config=gcp.container.ClusterPrivateClusterConfigArgs(
+        enable_private_nodes=True,
+        enable_private_endpoint=True,
+        master_ipv4_cidr_block="172.16.0.0/28",
+    ),
+    master_authorized_networks_config=gcp.container.ClusterMasterAuthorizedNetworksConfigArgs(
+        cidr_blocks=[
+            gcp.container.ClusterMasterAuthorizedNetworksConfigCidrBlockArgs(
+                cidr_block="10.10.0.0/20",
+                display_name="bastion-subnet",
+            ),
+        ],
     ),
     deletion_protection=False,
 )
@@ -108,11 +121,7 @@ node_pool = gcp.container.NodePool("poc-node-pool",
     ),
 )
 
-# ---------------------------------------------------------------------------
-# GitHub Actions Service Account — identity CI jobs impersonate via WIF.
-# Scoped to exactly: push images, manage Pulumi state. No cluster access —
-# ArgoCD is the only thing that ever applies changes to GKE.
-# ---------------------------------------------------------------------------
+# GitHub Actions Service Account
 github_actions_sa = gcp.serviceaccount.Account("github-actions-sa",
     account_id="github-actions-sa",
     display_name="GitHub Actions CI Service Account",
@@ -131,6 +140,40 @@ github_sa_storage_admin = gcp.projects.IAMMember("github-sa-storage-admin",
     member=pulumi.Output.concat("serviceAccount:", github_actions_sa.email),
 )
 
+# WIF pool
+wif_pool = gcp.iam.WorkloadIdentityPool("github-wif-pool",
+    workload_identity_pool_id="github-pool",
+    display_name="GitHub Actions Pool",
+    description="WIF pool for GitHub Actions CI",
+)
+
+# WIF provider
+wif_provider = gcp.iam.WorkloadIdentityPoolProvider("github-wif-provider",
+    workload_identity_pool_id=wif_pool.workload_identity_pool_id,
+    workload_identity_pool_provider_id="github-provider",
+    display_name="GitHub Provider",
+    oidc=gcp.iam.WorkloadIdentityPoolProviderOidcArgs(
+        issuer_uri="https://token.actions.githubusercontent.com",
+    ),
+    attribute_mapping={
+        "google.subject":       "assertion.sub",
+        "attribute.actor":      "assertion.actor",
+        "attribute.repository": "assertion.repository",
+    },
+    attribute_condition="assertion.repository == 'kiranvinod-02/gke-pulumi-poc'",
+)
+
+# SA binding
+wif_sa_binding = gcp.serviceaccount.IAMMember("github-wif-sa-binding",
+    service_account_id=github_actions_sa.name,
+    role="roles/iam.workloadIdentityUser",
+    member=pulumi.Output.concat(
+        "principalSet://iam.googleapis.com/",
+        wif_pool.name,
+        "/attribute.repository/kiranvinod-02/gke-pulumi-poc",
+    ),
+)
+
 pulumi.export("cluster_name", cluster.name)
 pulumi.export("artifact_registry", artifact_repo.name)
 pulumi.export("bastion_name", bastion.name)
@@ -138,8 +181,9 @@ pulumi.export("ssh_to_bastion_cmd", pulumi.Output.concat(
     "gcloud compute ssh ", bastion.name,
     " --zone ", zone, " --project ", project, " --tunnel-through-iap"
 ))
-pulumi.export("kubeconfig_cmd", pulumi.Output.concat(
+pulumi.export("kubeconfig_cmd_from_bastion", pulumi.Output.concat(
     "gcloud container clusters get-credentials ", cluster.name,
-    " --zone ", zone, " --project ", project
+    " --zone ", zone, " --project ", project, " --internal-ip"
 ))
 pulumi.export("github_actions_sa_email", github_actions_sa.email)
+pulumi.export("wif_provider_name", wif_provider.name)
