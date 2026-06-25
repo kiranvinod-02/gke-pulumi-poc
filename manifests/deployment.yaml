@@ -14,6 +14,6 @@ spec:
     spec:
       containers:
       - name: nginx-poc
-        image: asia-south1-docker.pkg.dev/kiran-499609/poc-repo/nginx-poc:v1
+        image: asia-south1-docker.pkg.dev/kiran-499609/poc-repo/nginx-poc:6a09dc152370c4e717c9fa4af3d7c365f4fa4782
         ports:
         - containerPort: 80
