@@ -1,0 +1,41 @@
+name: Pulumi infra
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/**'
+
+jobs:
+  pulumi-up:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/1031121708405/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-actions-sa@kiran-499609.iam.gserviceaccount.com
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Pulumi
+        run: curl -fsSL https://get.pulumi.com | sh && echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: pip install -r infra/requirements.txt
+
+      - name: Pulumi up
+        run: pulumi up --yes --cwd infra --stack dev
+        env:
+          PULUMI_CONFIG_PASSPHRASE: ""
