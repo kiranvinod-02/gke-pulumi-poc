@@ -35,6 +35,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r infra/requirements.txt
 
+      - name: Login to Pulumi state backend
+        run: pulumi login gs://kiran-499609-pulumi-state
+        env:
+          PULUMI_CONFIG_PASSPHRASE: ""
+
       - name: Pulumi up
         run: pulumi up --yes --cwd infra --stack dev
         env:
