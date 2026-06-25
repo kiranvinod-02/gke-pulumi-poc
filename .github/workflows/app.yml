@@ -1,0 +1,54 @@
+name: Build and push image
+
+on:
+  push:
+    paths:
+      - 'app/**'
+
+env:
+  PROJECT_ID: kiran-499609
+  REGION: asia-south1
+  REGISTRY: asia-south1-docker.pkg.dev
+  REPO: poc-repo
+  IMAGE: nginx-poc
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/1031121708405/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-actions-sa@kiran-499609.iam.gserviceaccount.com
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - name: Build image
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:latest \
+            ./app
+
+      - name: Push image
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:latest
+
+      - name: Update manifest image tag
+        run: |
+          sed -i "s|image:.*nginx-poc.*|image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:${{ github.sha }}|" manifests/deployment.yaml
+          git config user.email "ci@github.com"
+          git config user.name "GitHub Actions"
+          git add manifests/deployment.yaml
+          git diff --staged --quiet || git commit -m "ci: update image tag to ${{ github.sha }}"
+          git push
