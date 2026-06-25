@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx-poc
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kiranvinod-02/gke-pulumi-poc.git
+    targetRevision: HEAD
+    path: manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+EOF
