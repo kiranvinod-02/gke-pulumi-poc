@@ -1,0 +1,68 @@
+# =============================================================================
+# INTERNAL LOAD BALANCER — Admin Tools (ArgoCD, Grafana, Prometheus)
+# VPC-only — not reachable from internet
+# Engineers access via Tailscale VPN or bastion port-forward
+# =============================================================================
+
+# Internal LB for Grafana
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-internal-lb
+  namespace: monitoring
+  annotations:
+    cloud.google.com/load-balancer-type: "Internal"   # THIS makes it internal
+    networking.gke.io/load-balancer-type: "Internal"  # newer clusters use this
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: grafana
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+---
+# Internal LB for Prometheus
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-internal-lb
+  namespace: monitoring
+  annotations:
+    cloud.google.com/load-balancer-type: "Internal"
+    networking.gke.io/load-balancer-type: "Internal"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: prometheus
+  ports:
+  - name: http
+    port: 9090
+    targetPort: 9090
+---
+# Internal Ingress for ArgoCD — VPC-only access via Internal HTTPS LB
+# Engineers reach this via: Tailscale VPN → internal IP → ArgoCD UI
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-internal-ingress
+  namespace: argocd
+  annotations:
+    kubernetes.io/ingress.class: "gce-internal"       # THIS makes it internal
+    kubernetes.io/ingress.regional-static-ip-name: "argocd-internal-ip"
+spec:
+  defaultBackend:
+    service:
+      name: argocd-server
+      port:
+        number: 80
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-server
+            port:
+              number: 80
