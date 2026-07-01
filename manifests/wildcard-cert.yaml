@@ -1,0 +1,13 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-kirann-xyz
+  namespace: default
+spec:
+  secretName: wildcard-kirann-xyz-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+  - "kirann.xyz"
+  - "*.kirann.xyz"
