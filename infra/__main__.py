@@ -51,6 +51,8 @@ internal_ip = gcp.compute.Address("argocd-internal-ip",
     subnetwork=subnet.id,
     description="Static internal IP for Internal LB — ArgoCD/Grafana admin access",
 )
+pulumi.export("external_ip", external_ip.address)
+pulumi.export("internal_ip", internal_ip.address)
 
 # ---------------------------------------------------------------------------
 # Cloud Armor — WAF policy applied to External LB
